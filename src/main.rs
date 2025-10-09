@@ -63,9 +63,18 @@ impl TextEditor {
 
     /// Insert a new line at the cursor position
     fn insert_newline(&mut self) {
-        // TODO: Implement newline insertion
-        println!("Insert newline {}", self.lines.len());
-        }
+        let current_line = &mut self.lines[self.cursor_y];
+
+        // Split line at cursor
+        let rest_of_line = current_line[self.cursor_x..].to_string();
+
+        self.lines[self.cursor_y].truncate(self.cursor_x);
+
+        self.cursor_y += 1;
+        self.lines.insert(self.cursor_y, rest_of_line);
+        self.cursor_x = 0;
+        self.is_modified = true;
+    }
 
     fn move_cursor_left(&mut self) {
         if self.cursor_x > 0 {
@@ -119,6 +128,11 @@ fn render_text(
     y: i32,
     colour: Color,
 ) -> Result<(), String> {
+    // Skip rendering empty strings (SDL2 can't render them)
+    if text.is_empty() {
+        return Ok(());
+    }
+    
     let surface = font
         .render(text).blended(colour).map_err(|e| e.to_string())?;
     
@@ -155,8 +169,6 @@ fn main() -> Result<(), String> {
     
     let mut editor = TextEditor::new();
     let mut event_pump = sdl_context.event_pump()?;
-
-    editor.lines[0] = String::from("hello, world?");
 
     'running: loop {
         // Handle events
@@ -197,7 +209,9 @@ fn main() -> Result<(), String> {
                             || keymod.contains(sdl2::keyboard::Mod::RCTRLMOD) =>
                         {
                             editor.save();
-                        }
+                        },
+                        Keycode::Home => editor.cursor_x = 0,
+                        Keycode::End => editor.cursor_x = editor.lines[editor.cursor_y].len(),
                         _ => {}
                     }
                 }
