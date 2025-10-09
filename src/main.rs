@@ -165,7 +165,7 @@ fn render_text(
 fn draw_status_bar(canvas: &mut Canvas<Window>, font: &Font, editor: &TextEditor) -> Result<(), String> {
     let mut status = editor.filename.clone();
     if editor.is_modified {
-        status.push_str("*");
+        status.push('*');
     }
     
     canvas.set_draw_color(Color::RGB(217, 217, 214));
@@ -173,7 +173,7 @@ fn draw_status_bar(canvas: &mut Canvas<Window>, font: &Font, editor: &TextEditor
     canvas.set_draw_color(Color::RGB(0, 0, 0));
     render_text(
         canvas,
-        &font,
+        font,
         &status,
         10, (WINDOW_HEIGHT - 23) as i32, Color::RGB(89, 89, 88))?;
 
