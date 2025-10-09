@@ -97,14 +97,24 @@ impl TextEditor {
 
     /// Move cursor up
     fn move_cursor_up(&mut self) {
-        // TODO: Implement cursor movement
-        println!("Move up");
+        if self.cursor_y > 0 {
+            self.cursor_y -= 1;
+
+            if self.cursor_x > self.lines[self.cursor_y].len() {
+                self.cursor_x = self.lines[self.cursor_y].len();
+            }
+        }
     }
 
     /// Move cursor down
     fn move_cursor_down(&mut self) {
-        // TODO: Implement cursor movement
-        println!("Move down");
+        if self.cursor_y < self.lines.len() - 1 {
+            self.cursor_y += 1;
+
+            if self.cursor_x > self.lines[self.cursor_y].len() {
+                self.cursor_x = self.lines[self.cursor_y].len();
+            }
+        }
     }
 
     /// Save the current file
