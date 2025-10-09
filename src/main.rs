@@ -41,7 +41,7 @@ impl TextEditor {
             lines: vec![String::new()],
             cursor_x: 0,
             cursor_y: 0,
-            filename: String::from("sample.txt"),
+            filename: String::from("filename.txt"),
             is_modified: false,
             cursor_visible: true,
             last_cursor_blink: std::time::Instant::now(),
@@ -70,7 +70,6 @@ impl TextEditor {
         }
     }
 
-    /// Insert a new line at the cursor position
     fn insert_newline(&mut self) {
         let current_line = &mut self.lines[self.cursor_y];
 
@@ -144,7 +143,7 @@ fn render_text(
     y: i32,
     colour: Color,
 ) -> Result<(), String> {
-    // Skip rendering empty strings (SDL2 can't render them)
+    
     if text.is_empty() {
         return Ok(());
     }
@@ -163,6 +162,24 @@ fn render_text(
     Ok(())
 }
 
+fn draw_status_bar(canvas: &mut Canvas<Window>, font: &Font, editor: &TextEditor) -> Result<(), String> {
+    let mut status = editor.filename.clone();
+    if editor.is_modified {
+        status.push_str("*");
+    }
+    
+    canvas.set_draw_color(Color::RGB(217, 217, 214));
+    canvas.fill_rect(Rect::new(0, (WINDOW_HEIGHT - 25) as i32, WINDOW_WIDTH, 25)).map_err(|e| e.to_string())?;
+    canvas.set_draw_color(Color::RGB(0, 0, 0));
+    render_text(
+        canvas,
+        &font,
+        &status,
+        10, (WINDOW_HEIGHT - 23) as i32, Color::RGB(89, 89, 88))?;
+
+    Ok(())
+}
+
 fn main() -> Result<(), String> {
     // Initialize SDL2
     let sdl_context = sdl2::init()?;
@@ -177,7 +194,6 @@ fn main() -> Result<(), String> {
 
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
 
-    // Initialize TTF for text rendering
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
 
     let font_path = "DejaVuSansMono.ttf";    
@@ -187,7 +203,6 @@ fn main() -> Result<(), String> {
     let mut event_pump = sdl_context.event_pump()?;
 
     'running: loop {
-        // Handle events
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -240,7 +255,6 @@ fn main() -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(255, 255, 255));
         canvas.clear();
 
-        // TODO: Render text content
         for (i, line) in editor.lines.iter().enumerate() {
             render_text(
                 &mut canvas,
@@ -265,11 +279,10 @@ fn main() -> Result<(), String> {
             canvas.fill_rect(cursor_rect).map_err(|e| e.to_string())?;
         }
         
-        // Draw a simple status message
+        draw_status_bar(&mut canvas, &font, &editor)?;
 
         canvas.present();
 
-        // Cap frame rate
         std::thread::sleep(Duration::from_millis(16)); // ~60 FPS
     }
 
