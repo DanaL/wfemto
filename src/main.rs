@@ -20,6 +20,8 @@ struct TextEditor {
     cursor_y: usize,
     filename: String,
     is_modified: bool,
+    cursor_visible: bool,
+    last_cursor_blink: std::time::Instant,
 }
 
 impl TextEditor {
@@ -30,6 +32,8 @@ impl TextEditor {
             cursor_y: 0,
             filename: String::from("sample.txt"),
             is_modified: false,
+            cursor_visible: true,
+            last_cursor_blink: std::time::Instant::now(),
         }
     }
 
@@ -124,7 +128,7 @@ fn main() -> Result<(), String> {
 
     // Create window
     let window = video_subsystem
-        .window("Wpico - Rust Text Editor", WINDOW_WIDTH, WINDOW_HEIGHT)
+        .window("wpico 0.0.1", WINDOW_WIDTH, WINDOW_HEIGHT)
         .position_centered()
         .build()
         .map_err(|e| e.to_string())?;
@@ -198,18 +202,23 @@ fn main() -> Result<(), String> {
                 10, 10 + (i as i32 * 25), Color::RGB(0, 0, 0))?;
         }
         
-        // For now, just draw a simple cursor indicator
-        canvas.set_draw_color(Color::RGB(128, 128, 128));
-        let cursor_rect = Rect::new(
-            10 + (editor.cursor_x as i32 * 10),
-            10 + (editor.cursor_y as i32 * 25),
-            2,
-            16,
-        );
-        canvas.fill_rect(cursor_rect).map_err(|e| e.to_string())?;
-
+        if editor.last_cursor_blink.elapsed() >= Duration::from_millis(500) {
+            editor.cursor_visible = !editor.cursor_visible;
+            editor.last_cursor_blink = std::time::Instant::now();
+        }
+        
+        if editor.cursor_visible {
+            canvas.set_draw_color(Color::RGB(128, 128, 128));
+            let cursor_rect = Rect::new(
+                10 + (editor.cursor_x as i32 * 10),
+                10 + (editor.cursor_y as i32 * 25),
+                2,
+                16,
+            );
+            canvas.fill_rect(cursor_rect).map_err(|e| e.to_string())?;
+        }
+        
         // Draw a simple status message
-        // TODO: Replace with actual text rendering using TTF
 
         canvas.present();
 
