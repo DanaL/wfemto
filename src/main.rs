@@ -1,3 +1,14 @@
+// wpico - A toy text editor
+// Written in 2025 by Dana Larose <ywg.dana@gmail.com>
+//
+// To the extent possible under law, the author(s) have dedicated all copyright
+// and related and neighboring rights to this software to the public domain
+// worldwide. This software is distributed without any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication along 
+// with this software. If not, 
+// see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
 extern crate sdl2;
 
 use sdl2::event::Event;
@@ -37,7 +48,6 @@ impl TextEditor {
         }
     }
 
-    /// Insert a character at the current cursor position
     fn insert_char(&mut self, c: char) {
         let line = &mut self.lines[self.cursor_y];
         line.insert(self.cursor_x, c);
@@ -45,7 +55,6 @@ impl TextEditor {
         self.is_modified = true;        
     }
 
-    /// Delete the character before the cursor
     fn backspace(&mut self) {
         if self.cursor_x > 0 {
             let line = &mut self.lines[self.cursor_y];
@@ -85,7 +94,6 @@ impl TextEditor {
         }
     }
 
-    /// Move cursor right
     fn move_cursor_right(&mut self) {
         if self.cursor_x < self.lines[self.cursor_y].len() {
             self.cursor_x += 1;
@@ -95,7 +103,6 @@ impl TextEditor {
         }
     }
 
-    /// Move cursor up
     fn move_cursor_up(&mut self) {
         if self.cursor_y > 0 {
             self.cursor_y -= 1;
@@ -106,7 +113,6 @@ impl TextEditor {
         }
     }
 
-    /// Move cursor down
     fn move_cursor_down(&mut self) {
         if self.cursor_y < self.lines.len() - 1 {
             self.cursor_y += 1;
