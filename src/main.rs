@@ -39,21 +39,33 @@ impl TextEditor {
 
     /// Insert a character at the current cursor position
     fn insert_char(&mut self, c: char) {
-        // TODO: Implement character insertion
-        println!("Insert char: {} {} {}", c, self.cursor_x, self.cursor_y);
+        let line = &mut self.lines[self.cursor_y];
+        line.insert(self.cursor_x, c);
+        self.cursor_x += 1;
+        self.is_modified = true;        
     }
 
     /// Delete the character before the cursor
     fn backspace(&mut self) {
-        // TODO: Implement backspace
-        println!("Backspace");
+        if self.cursor_x > 0 {
+            let line = &mut self.lines[self.cursor_y];
+            line.remove(self.cursor_x - 1);
+            self.cursor_x -= 1;
+            self.is_modified = true;
+        } else if self.cursor_y > 0 {
+            let current_line = self.lines.remove(self.cursor_y);
+            self.cursor_y -= 1;
+            self.cursor_x = self.lines[self.cursor_y].len();
+            self.lines[self.cursor_y].push_str(&current_line);
+            self.is_modified = true;
+        }
     }
 
     /// Insert a new line at the cursor position
     fn insert_newline(&mut self) {
         // TODO: Implement newline insertion
-        println!("Insert newline");
-    }
+        println!("Insert newline {}", self.lines.len());
+        }
 
     fn move_cursor_left(&mut self) {
         if self.cursor_x > 0 {
@@ -176,6 +188,11 @@ fn main() -> Result<(), String> {
                         Keycode::Right => editor.move_cursor_right(),
                         Keycode::Up => editor.move_cursor_up(),
                         Keycode::Down => editor.move_cursor_down(),
+                        Keycode::Q if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD)
+                            || keymod.contains(sdl2::keyboard::Mod::RCTRLMOD) =>
+                        {
+                            break 'running;
+                        }
                         Keycode::S if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD)
                             || keymod.contains(sdl2::keyboard::Mod::RCTRLMOD) =>
                         {
