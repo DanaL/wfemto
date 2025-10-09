@@ -20,19 +20,40 @@ use sdl2::ttf::Font;
 use sdl2::video::Window;
 use std::time::Duration;
 
-const WINDOW_WIDTH: u32 = 1200;
-const WINDOW_HEIGHT: u32 = 800;
+const EDITOR_COLS: u32 = 80;
+const EDITOR_ROWS: u32 = 40;
 const FONT_SIZE: u16 = 16;
+const MARGIN_LEFT: i32 = 10;
+const MARGIN_TOP: i32 = 10;
+
+const OPEN_FILE_MARGIN: usize = 11;
+
+#[derive(PartialEq)]
+enum EditorMode {
+    Edit,
+    OpenFile
+}
+
+struct WindowInfo {
+    rows: u32,
+    cols: u32,
+    char_width: u32,
+    char_height: u32,    
+}
 
 /// Represents the text editor state
 struct TextEditor {
     lines: Vec<String>,
     cursor_x: usize,
     cursor_y: usize,
+    prev_cursor_x: usize,
+    prev_cursor_y: usize,
     filename: String,
     is_modified: bool,
     cursor_visible: bool,
     last_cursor_blink: std::time::Instant,
+    mode: EditorMode,
+    input_buffer: String,  // Buffer for command/filename input    
 }
 
 impl TextEditor {
@@ -41,18 +62,27 @@ impl TextEditor {
             lines: vec![String::new()],
             cursor_x: 0,
             cursor_y: 0,
+            prev_cursor_x: 0,
+            prev_cursor_y: 0,
             filename: String::from("filename.txt"),
             is_modified: false,
             cursor_visible: true,
             last_cursor_blink: std::time::Instant::now(),
+            mode: EditorMode::Edit,
+            input_buffer: String::new(),
         }
     }
 
     fn insert_char(&mut self, c: char) {
-        let line = &mut self.lines[self.cursor_y];
-        line.insert(self.cursor_x, c);
-        self.cursor_x += 1;
-        self.is_modified = true;        
+        if self.mode == EditorMode::OpenFile {
+            self.input_buffer.push(c);
+            self.cursor_x += 1;
+        } else {
+            let line = &mut self.lines[self.cursor_y];
+            line.insert(self.cursor_x, c);
+            self.cursor_x += 1;
+            self.is_modified = true;
+        }
     }
 
     fn backspace(&mut self) {
@@ -67,6 +97,18 @@ impl TextEditor {
             self.cursor_x = self.lines[self.cursor_y].len();
             self.lines[self.cursor_y].push_str(&current_line);
             self.is_modified = true;
+        }
+    }
+
+    fn backspace_buffer(&mut self, offset: usize) {
+        if self.input_buffer.is_empty() {
+            return;
+        }
+
+        let buffer_pos = self.cursor_x - offset - 2;
+        if buffer_pos <= self.input_buffer.len() {
+            self.input_buffer.remove(buffer_pos );
+            self.cursor_x -= 1;
         }
     }
 
@@ -85,15 +127,30 @@ impl TextEditor {
     }
 
     fn move_cursor_left(&mut self) {
+        if self.mode == EditorMode::OpenFile {
+            if self.cursor_x - OPEN_FILE_MARGIN > 0 {
+                self.cursor_x -= 1;
+            }
+            
+            return;
+        }
+
         if self.cursor_x > 0 {
             self.cursor_x -= 1;
         } else if self.cursor_y > 0 {
             self.cursor_y -= 1;
-            self.cursor_x = self.lines[self.cursor_y].len();
+            self.cursor_x = self.lines[self.cursor_y].len();            
         }
     }
-
+    
     fn move_cursor_right(&mut self) {
+        if self.mode == EditorMode::OpenFile {
+            if self.cursor_x < self.input_buffer.len() + OPEN_FILE_MARGIN {
+                self.cursor_x += 1;
+            }
+            return;
+        } 
+
         if self.cursor_x < self.lines[self.cursor_y].len() {
             self.cursor_x += 1;
         } else if self.cursor_y < self.lines.len() - 1 {
@@ -162,57 +219,75 @@ fn render_text(
     Ok(())
 }
 
-fn draw_status_bar(canvas: &mut Canvas<Window>, font: &Font, editor: &TextEditor) -> Result<(), String> {
-    let mut status = editor.filename.clone();
-    if editor.is_modified {
-        status.push('*');
-    }
+fn draw_status_bar(
+    canvas: &mut Canvas<Window>, 
+    font: &Font, 
+    editor: &TextEditor, 
+    window_info: &WindowInfo
+) -> Result<(), String> {    
+    let status = match editor.mode {
+        EditorMode::Edit => { 
+            let mut status = editor.filename.clone();  
+            if editor.is_modified {
+                status.push('*');
+            }
+            status
+        },
+        EditorMode::OpenFile => {
+            let mut status = String::from("Open file: ");
+            status.push_str(&editor.input_buffer);
+            status
+        },
+    };
     
+    let status_bar_row_pixels = window_info.rows * window_info.char_height + MARGIN_TOP as u32;
+
     canvas.set_draw_color(Color::RGB(217, 217, 214));
-    canvas.fill_rect(Rect::new(0, (WINDOW_HEIGHT - 25) as i32, WINDOW_WIDTH, 25)).map_err(|e| e.to_string())?;
+    canvas.fill_rect(Rect::new(0, status_bar_row_pixels as i32, 
+        window_info.cols * window_info.char_width + (MARGIN_LEFT as u32 * 2), window_info.char_height)).map_err(|e| e.to_string())?;
     canvas.set_draw_color(Color::RGB(0, 0, 0));
+
     render_text(
         canvas,
         font,
         &status,
-        10, (WINDOW_HEIGHT - 23) as i32, Color::RGB(89, 89, 88))?;
+        10, status_bar_row_pixels as i32, Color::RGB(89, 89, 88))?;
 
     Ok(())
 }
 
 fn main() -> Result<(), String> {
-    // Initialize SDL2
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
-
-    // Create window
-    let window = video_subsystem
-        .window("wpico 0.0.1", WINDOW_WIDTH, WINDOW_HEIGHT)
-        .position_centered()
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
 
     let font_path = "DejaVuSansMono.ttf";    
     let font = ttf_context.load_font(font_path, FONT_SIZE)?;
     
+    let (char_width, char_height) = font.size_of("X").map_err(|e| e.to_string())?;
+
+    let window_width = (EDITOR_COLS as u32 * char_width) + (MARGIN_LEFT * 2) as u32;
+    let window_height = ((EDITOR_ROWS + 1) as u32 * char_height) + MARGIN_TOP as u32;
+
+    let window_info = WindowInfo { rows: EDITOR_ROWS, cols: EDITOR_COLS, char_width, char_height };
+
+    let window = video_subsystem
+        .window("wpico 0.0.1", window_width, window_height)
+        .position_centered()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
+
     let mut editor = TextEditor::new();
     let mut event_pump = sdl_context.event_pump()?;
 
     'running: loop {
         for event in event_pump.poll_iter() {
             match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-
+                Event::Quit { .. } => break 'running,
                 Event::TextInput { text, .. } => {
-                    // Handle text input
                     for c in text.chars() {
                         editor.insert_char(c);
                     }
@@ -226,11 +301,25 @@ fn main() -> Result<(), String> {
                     // Handle special keys
                     match keycode {
                         Keycode::Return => editor.insert_newline(),
-                        Keycode::Backspace => editor.backspace(),
+                        Keycode::Backspace => {
+                            if editor.mode == EditorMode::Edit {
+                                editor.backspace();
+                            } else {
+                                editor.backspace_buffer(OPEN_FILE_MARGIN);
+                            }
+                        },
                         Keycode::Left => editor.move_cursor_left(),
                         Keycode::Right => editor.move_cursor_right(),
-                        Keycode::Up => editor.move_cursor_up(),
-                        Keycode::Down => editor.move_cursor_down(),
+                        Keycode::Up => {
+                            if editor.mode == EditorMode::Edit {
+                                editor.move_cursor_up()
+                            }
+                        },
+                        Keycode::Down => {
+                            if editor.mode == EditorMode::Edit {
+                                editor.move_cursor_down()
+                            }
+                        },
                         Keycode::Q if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD)
                             || keymod.contains(sdl2::keyboard::Mod::RCTRLMOD) =>
                         {
@@ -241,8 +330,25 @@ fn main() -> Result<(), String> {
                         {
                             editor.save();
                         },
+                        Keycode::O if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD)
+                            || keymod.contains(sdl2::keyboard::Mod::RCTRLMOD) =>
+                        {
+                            if editor.mode != EditorMode::OpenFile {
+                                editor.mode = EditorMode::OpenFile;
+                                editor.input_buffer = String::new();
+                                editor.prev_cursor_x = editor.cursor_x;
+                                editor.prev_cursor_y = editor.cursor_y;
+                                editor.cursor_x = OPEN_FILE_MARGIN;
+                                editor.cursor_y = EDITOR_ROWS as usize;
+                            }
+                        },
                         Keycode::Home => editor.cursor_x = 0,
                         Keycode::End => editor.cursor_x = editor.lines[editor.cursor_y].len(),
+                        Keycode::Escape => { 
+                            editor.mode = EditorMode::Edit;
+                            editor.cursor_x = editor.prev_cursor_x;
+                            editor.cursor_y = editor.prev_cursor_y;
+                        },
                         _ => {}
                     }
                 }
@@ -260,7 +366,7 @@ fn main() -> Result<(), String> {
                 &mut canvas,
                 &font,
                 line,
-                10, 10 + (i as i32 * 25), Color::RGB(0, 0, 0))?;
+                10, 10 + (i as i32 * window_info.char_height as i32), Color::RGB(0, 0, 0))?;
         }
         
         if editor.last_cursor_blink.elapsed() >= Duration::from_millis(500) {
@@ -268,18 +374,18 @@ fn main() -> Result<(), String> {
             editor.last_cursor_blink = std::time::Instant::now();
         }
         
+        draw_status_bar(&mut canvas, &font, &editor, &window_info)?;
+
         if editor.cursor_visible {
             canvas.set_draw_color(Color::RGB(128, 128, 128));
             let cursor_rect = Rect::new(
                 10 + (editor.cursor_x as i32 * 10),
-                10 + (editor.cursor_y as i32 * 25),
+                10 + (editor.cursor_y as i32 * window_info.char_height as i32),
                 2,
                 16,
             );
             canvas.fill_rect(cursor_rect).map_err(|e| e.to_string())?;
         }
-        
-        draw_status_bar(&mut canvas, &font, &editor)?;
 
         canvas.present();
 
