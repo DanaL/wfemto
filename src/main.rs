@@ -25,7 +25,7 @@ use sdl2::video::Window;
 
 const EDITOR_COLS: u32 = 80;
 const EDITOR_ROWS: u32 = 32;
-const FONT_SIZE: u16 = 16;
+const FONT_SIZE: u16 = 14;
 const MARGIN_LEFT: i32 = 10;
 const MARGIN_TOP: i32 = 10;
 
@@ -289,7 +289,7 @@ fn main() -> Result<(), String> {
     let window_info = WindowInfo { rows: EDITOR_ROWS, cols: EDITOR_COLS, char_width, char_height };
 
     let window = video_subsystem
-        .window("wfemto 0.0.1", window_width, window_height)
+        .window("wfemto", window_width, window_height)
         .position_centered()
         .build()
         .map_err(|e| e.to_string())?;
@@ -411,14 +411,25 @@ fn main() -> Result<(), String> {
         }
         
         draw_status_bar(&mut canvas, &font, &editor, &window_info)?;
-
+        
         if editor.cursor_visible {
             canvas.set_draw_color(Color::RGB(128, 128, 128));
+            
+            // Calculate actual text width up to cursor position
+            // NB: char_width * text was inaccute
+            let text_width = if editor.mode == EditorMode::Edit {
+                let text_before_cursor = &editor.lines[editor.cursor_y][..editor.cursor_x];
+                font.size_of(text_before_cursor).unwrap_or((0, 0)).0
+            } else {
+                let status = format!("Open file: {}", &editor.input_buffer[..editor.cursor_x - OPEN_FILE_MARGIN]);
+                font.size_of(&status).unwrap_or((0, 0)).0
+            };
+            
             let cursor_rect = Rect::new(
-                10 + (editor.cursor_x as i32 * 10),
-                10 + (editor.cursor_y as i32 * window_info.char_height as i32),
+                MARGIN_LEFT + text_width as i32,
+                MARGIN_TOP + (editor.cursor_y as i32 * window_info.char_height as i32),
                 2,
-                16,
+                window_info.char_height,
             );
             canvas.fill_rect(cursor_rect).map_err(|e| e.to_string())?;
         }
