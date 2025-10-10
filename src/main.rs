@@ -101,7 +101,7 @@ impl TextEditor {
     }
 
     fn backspace_buffer(&mut self, offset: usize) {
-        if self.input_buffer.is_empty() {
+        if self.input_buffer.is_empty() || self.cursor_x == offset {
             return;
         }
 
