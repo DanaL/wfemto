@@ -283,8 +283,8 @@ fn main() -> Result<(), String> {
     
     let (char_width, char_height) = font.size_of("X").map_err(|e| e.to_string())?;
 
-    let window_width = (EDITOR_COLS as u32 * char_width) + (MARGIN_LEFT * 2) as u32;
-    let window_height = ((EDITOR_ROWS + 1) as u32 * char_height) + MARGIN_TOP as u32;
+    let window_width = EDITOR_COLS * char_width + (MARGIN_LEFT * 2) as u32;
+    let window_height = ((EDITOR_ROWS + 1) * char_height) + MARGIN_TOP as u32;
 
     let window_info = WindowInfo { rows: EDITOR_ROWS, cols: EDITOR_COLS, char_width, char_height };
 
@@ -364,8 +364,22 @@ fn main() -> Result<(), String> {
                                 editor.cursor_y = EDITOR_ROWS as usize;
                             }
                         },
-                        Keycode::Home => editor.cursor_x = 0,
-                        Keycode::End => editor.cursor_x = editor.lines[editor.cursor_y].len(),
+                        Keycode::Home => {
+                            if editor.mode == EditorMode::Edit {
+                                editor.cursor_x = 0;
+                            }
+                            else {
+                                editor.cursor_x = OPEN_FILE_MARGIN;
+                            }
+                        },
+                        Keycode::End => {
+                            if editor.mode == EditorMode::Edit {
+                                editor.cursor_x = editor.lines[editor.cursor_y].len();
+                            }
+                            else {
+                                editor.cursor_x = editor.input_buffer.len() + OPEN_FILE_MARGIN;
+                            }
+                        },
                         Keycode::Escape => { 
                             editor.mode = EditorMode::Edit;
                             editor.cursor_x = editor.prev_cursor_x;
