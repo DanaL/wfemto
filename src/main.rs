@@ -21,7 +21,7 @@ use sdl2::video::Window;
 use std::time::Duration;
 
 const EDITOR_COLS: u32 = 80;
-const EDITOR_ROWS: u32 = 40;
+const EDITOR_ROWS: u32 = 32;
 const FONT_SIZE: u16 = 16;
 const MARGIN_LEFT: i32 = 10;
 const MARGIN_TOP: i32 = 10;
@@ -105,7 +105,7 @@ impl TextEditor {
             return;
         }
 
-        let buffer_pos = self.cursor_x - offset - 2;
+        let buffer_pos = self.cursor_x - offset - 1;
         if buffer_pos <= self.input_buffer.len() {
             self.input_buffer.remove(buffer_pos );
             self.cursor_x -= 1;
@@ -273,7 +273,7 @@ fn main() -> Result<(), String> {
     let window_info = WindowInfo { rows: EDITOR_ROWS, cols: EDITOR_COLS, char_width, char_height };
 
     let window = video_subsystem
-        .window("wpico 0.0.1", window_width, window_height)
+        .window("wfemto 0.0.1", window_width, window_height)
         .position_centered()
         .build()
         .map_err(|e| e.to_string())?;
