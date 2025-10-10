@@ -11,6 +11,10 @@
 
 extern crate sdl2;
 
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::time::Duration;
+
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -18,7 +22,6 @@ use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::ttf::Font;
 use sdl2::video::Window;
-use std::time::Duration;
 
 const EDITOR_COLS: u32 = 80;
 const EDITOR_ROWS: u32 = 32;
@@ -187,9 +190,21 @@ impl TextEditor {
     }
 
     /// Load a file
-    fn load(&mut self, filename: &str) {
-        // TODO: Implement file loading
-        println!("Load file: {}", filename);
+    fn load(&mut self, filename: &str) -> Result<(), String> {
+        let file = File::open(filename).map_err(|e| e.to_string())?;
+        let reader = BufReader::new(file);
+        
+        self.lines.clear();
+        for line in reader.lines() {
+            self.lines.push(line.map_err(|e| e.to_string())?);
+        }
+
+        self.filename = filename.to_string();
+        self.cursor_x = 0;
+        self.cursor_y = 0;
+        self.is_modified = false;
+
+        Ok(())
     }
 }
 
@@ -301,7 +316,13 @@ fn main() -> Result<(), String> {
                 } => {
                     // Handle special keys
                     match keycode {
-                        Keycode::Return => editor.insert_newline(),
+                        Keycode::Return => if editor.mode == EditorMode::Edit {
+                            editor.insert_newline()
+                        } else {
+                            let filename = editor.input_buffer.clone();
+                            editor.load(&filename);
+                            editor.mode = EditorMode::Edit;                            
+                        },
                         Keycode::Backspace => {
                             if editor.mode == EditorMode::Edit {
                                 editor.backspace();
