@@ -75,7 +75,8 @@ impl TextEditor {
 
     fn insert_char(&mut self, c: char) {
         if self.mode == EditorMode::OpenFile {
-            self.input_buffer.push(c);
+            let pos = self.cursor_x - OPEN_FILE_MARGIN;
+            self.input_buffer.insert(pos, c);
             self.cursor_x += 1;
         } else {
             let line = &mut self.lines[self.cursor_y];
