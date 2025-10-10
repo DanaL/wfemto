@@ -1,4 +1,4 @@
-// wpico - A toy text editor
+// wfemto - A toy text editor
 // Written in 2025 by Dana Larose <ywg.dana@gmail.com>
 //
 // To the extent possible under law, the author(s) have dedicated all copyright
@@ -11,6 +11,7 @@
 
 extern crate sdl2;
 
+use std::cmp;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::time::Duration;
@@ -48,7 +49,8 @@ struct WindowInfo {
 struct TextEditor {
     lines: Vec<String>,
     cursor_x: usize,
-    cursor_y: usize,
+    scr_row: usize,
+    buffer_row: usize,
     prev_cursor_x: usize,
     prev_cursor_y: usize,
     filename: String,
@@ -64,9 +66,10 @@ impl TextEditor {
         TextEditor {
             lines: vec![String::new()],
             cursor_x: 0,
-            cursor_y: 0,
+            scr_row: 0,
             prev_cursor_x: 0,
             prev_cursor_y: 0,
+            buffer_row: 0,
             filename: String::from("filename.txt"),
             is_modified: false,
             cursor_visible: true,
@@ -82,7 +85,7 @@ impl TextEditor {
             self.input_buffer.insert(pos, c);
             self.cursor_x += 1;
         } else {
-            let line = &mut self.lines[self.cursor_y];
+            let line = &mut self.lines[self.buffer_row];
             line.insert(self.cursor_x, c);
             self.cursor_x += 1;
             self.is_modified = true;
@@ -91,15 +94,15 @@ impl TextEditor {
 
     fn backspace(&mut self) {
         if self.cursor_x > 0 {
-            let line = &mut self.lines[self.cursor_y];
+            let line = &mut self.lines[self.buffer_row];
             line.remove(self.cursor_x - 1);
             self.cursor_x -= 1;
             self.is_modified = true;
-        } else if self.cursor_y > 0 {
-            let current_line = self.lines.remove(self.cursor_y);
-            self.cursor_y -= 1;
-            self.cursor_x = self.lines[self.cursor_y].len();
-            self.lines[self.cursor_y].push_str(&current_line);
+        } else if self.buffer_row > 0 {
+            let current_line = self.lines.remove(self.buffer_row);
+            self.buffer_row -= 1;
+            self.cursor_x = self.lines[self.buffer_row].len();
+            self.lines[self.buffer_row].push_str(&current_line);
             self.is_modified = true;
         }
     }
@@ -117,15 +120,16 @@ impl TextEditor {
     }
 
     fn insert_newline(&mut self) {
-        let current_line = &mut self.lines[self.cursor_y];
+        let current_line = &mut self.lines[self.buffer_row];
 
         // Split line at cursor
         let rest_of_line = current_line[self.cursor_x..].to_string();
 
-        self.lines[self.cursor_y].truncate(self.cursor_x);
+        self.lines[self.buffer_row].truncate(self.cursor_x);
 
-        self.cursor_y += 1;
-        self.lines.insert(self.cursor_y, rest_of_line);
+        self.buffer_row += 1;
+        self.scr_row = cmp::min(self.scr_row + 1, EDITOR_ROWS as usize - 1);
+        self.lines.insert(self.buffer_row, rest_of_line);
         self.cursor_x = 0;
         self.is_modified = true;
     }
@@ -141,9 +145,9 @@ impl TextEditor {
 
         if self.cursor_x > 0 {
             self.cursor_x -= 1;
-        } else if self.cursor_y > 0 {
-            self.cursor_y -= 1;
-            self.cursor_x = self.lines[self.cursor_y].len();            
+        } else if self.scr_row > 0 {
+            self.buffer_row -= 1;
+            self.cursor_x = self.lines[self.buffer_row].len();            
         }
     }
     
@@ -155,31 +159,39 @@ impl TextEditor {
             return;
         } 
 
-        if self.cursor_x < self.lines[self.cursor_y].len() {
+        if self.cursor_x < self.lines[self.buffer_row].len() {
             self.cursor_x += 1;
-        } else if self.cursor_y < self.lines.len() - 1 {
-            self.cursor_y += 1;
+        } else if self.buffer_row < self.lines.len() - 1 {
+            self.buffer_row += 1;
             self.cursor_x = 0;
         }
     }
 
     fn move_cursor_up(&mut self) {
-        if self.cursor_y > 0 {
-            self.cursor_y -= 1;
+        if self.buffer_row > 0 {
+            self.buffer_row -= 1;
 
-            if self.cursor_x > self.lines[self.cursor_y].len() {
-                self.cursor_x = self.lines[self.cursor_y].len();
+            if self.cursor_x > self.lines[self.buffer_row].len() {
+                self.cursor_x = self.lines[self.buffer_row].len();
             }
         }
+
+        if self.scr_row > 0 as usize {
+            self.scr_row -= 1;
+        }
     }
+    
+    fn move_cursor_down(&mut self, window_info: &WindowInfo) {
+        if self.buffer_row < self.lines.len() - 1 {
+            self.buffer_row += 1;
 
-    fn move_cursor_down(&mut self) {
-        if self.cursor_y < self.lines.len() - 1 {
-            self.cursor_y += 1;
-
-            if self.cursor_x > self.lines[self.cursor_y].len() {
-                self.cursor_x = self.lines[self.cursor_y].len();
+            if self.cursor_x > self.lines[self.buffer_row].len() {
+                self.cursor_x = self.lines[self.buffer_row].len();
             }
+        }
+
+        if self.scr_row < window_info.rows as usize - 1 {
+            self.scr_row += 1;
         }
     }
 
@@ -189,7 +201,6 @@ impl TextEditor {
         println!("Save file: {}", self.filename);
     }
 
-    /// Load a file
     fn load(&mut self, filename: &str) -> Result<(), String> {
         let file = File::open(filename).map_err(|e| e.to_string())?;
         let reader = BufReader::new(file);
@@ -201,7 +212,8 @@ impl TextEditor {
 
         self.filename = filename.to_string();
         self.cursor_x = 0;
-        self.cursor_y = 0;
+        self.scr_row = 0;
+        self.buffer_row = 0;
         self.is_modified = false;
 
         Ok(())
@@ -299,6 +311,8 @@ fn main() -> Result<(), String> {
     let mut editor = TextEditor::new();
     let mut event_pump = sdl_context.event_pump()?;
 
+    //editor.load("src/main.rs")?;
+
     'running: loop {
         for event in event_pump.poll_iter() {
             match event {
@@ -339,8 +353,8 @@ fn main() -> Result<(), String> {
                         },
                         Keycode::Down => {
                             if editor.mode == EditorMode::Edit {
-                                editor.move_cursor_down()
-                            }
+                                editor.move_cursor_down(&window_info)
+                            }                            
                         },
                         Keycode::Q if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD)
                             || keymod.contains(sdl2::keyboard::Mod::RCTRLMOD) =>
@@ -359,9 +373,9 @@ fn main() -> Result<(), String> {
                                 editor.mode = EditorMode::OpenFile;
                                 editor.input_buffer = String::new();
                                 editor.prev_cursor_x = editor.cursor_x;
-                                editor.prev_cursor_y = editor.cursor_y;
+                                editor.prev_cursor_y = editor.scr_row;
                                 editor.cursor_x = OPEN_FILE_MARGIN;
-                                editor.cursor_y = EDITOR_ROWS as usize;
+                                editor.scr_row = EDITOR_ROWS as usize;
                             }
                         },
                         Keycode::Home => {
@@ -374,7 +388,7 @@ fn main() -> Result<(), String> {
                         },
                         Keycode::End => {
                             if editor.mode == EditorMode::Edit {
-                                editor.cursor_x = editor.lines[editor.cursor_y].len();
+                                editor.cursor_x = editor.lines[editor.buffer_row].len();
                             }
                             else {
                                 editor.cursor_x = editor.input_buffer.len() + OPEN_FILE_MARGIN;
@@ -383,7 +397,7 @@ fn main() -> Result<(), String> {
                         Keycode::Escape => { 
                             editor.mode = EditorMode::Edit;
                             editor.cursor_x = editor.prev_cursor_x;
-                            editor.cursor_y = editor.prev_cursor_y;
+                            editor.scr_row = editor.prev_cursor_y;
                         },
                         _ => {}
                     }
@@ -397,12 +411,20 @@ fn main() -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(255, 255, 255));
         canvas.clear();
 
-        for (i, line) in editor.lines.iter().enumerate() {
+        let buffer_start = (editor.buffer_row as i32 - editor.scr_row as i32).max(0) as usize;
+        let buffer_end = (buffer_start + window_info.rows as usize).min(editor.lines.len());
+        
+        let mut scr_row = 0;
+        for buffer_row in buffer_start..buffer_end {                                
+            let line = &editor.lines[buffer_row];                
             render_text(
                 &mut canvas,
                 &font,
                 line,
-                10, 10 + (i as i32 * window_info.char_height as i32), Color::RGB(0, 0, 0))?;
+                MARGIN_LEFT, 
+                MARGIN_TOP + (scr_row as i32 * window_info.char_height as i32), 
+                Color::RGB(0, 0, 0))?;
+            scr_row += 1;
         }
         
         if editor.last_cursor_blink.elapsed() >= Duration::from_millis(500) {
@@ -412,22 +434,22 @@ fn main() -> Result<(), String> {
         
         draw_status_bar(&mut canvas, &font, &editor, &window_info)?;
         
-        if editor.cursor_visible {
+        if editor.cursor_visible {            
             canvas.set_draw_color(Color::RGB(128, 128, 128));
             
             // Calculate actual text width up to cursor position
-            // NB: char_width * text was inaccute
-            let text_width = if editor.mode == EditorMode::Edit {
-                let text_before_cursor = &editor.lines[editor.cursor_y][..editor.cursor_x];
-                font.size_of(text_before_cursor).unwrap_or((0, 0)).0
-            } else {
+            // NB: char_width * text was inaccurate
+            let text_width = if editor.mode == EditorMode::OpenFile {
                 let status = format!("Open file: {}", &editor.input_buffer[..editor.cursor_x - OPEN_FILE_MARGIN]);
                 font.size_of(&status).unwrap_or((0, 0)).0
+            } else {
+                let text_before_cursor = &editor.lines[editor.buffer_row][..editor.cursor_x];
+                font.size_of(text_before_cursor).unwrap_or((0, 0)).0
             };
-            
+                        
             let cursor_rect = Rect::new(
                 MARGIN_LEFT + text_width as i32,
-                MARGIN_TOP + (editor.cursor_y as i32 * window_info.char_height as i32),
+                MARGIN_TOP + (editor.scr_row as i32 * window_info.char_height as i32),
                 2,
                 window_info.char_height,
             );
