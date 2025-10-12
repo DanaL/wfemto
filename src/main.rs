@@ -176,12 +176,16 @@ impl TextEditor {
             }
         }
 
-        if self.scr_row > 0 as usize {
+        if self.scr_row > 0 && !(self.scr_row == 5 && self.buffer_row > 5) {
             self.scr_row -= 1;
         }
     }
     
     fn move_cursor_down(&mut self, window_info: &WindowInfo) {
+        if self.buffer_row == self.lines.len() - 1 {
+            return
+        }
+        
         if self.buffer_row < self.lines.len() - 1 {
             self.buffer_row += 1;
 
@@ -190,7 +194,8 @@ impl TextEditor {
             }
         }
 
-        if self.scr_row < window_info.rows as usize - 1 {
+        let bm = EDITOR_ROWS as usize - 5;
+        if self.scr_row < window_info.rows as usize - 1 && !(self.scr_row == bm && self.buffer_row < self.lines.len() - 5) {
             self.scr_row += 1;
         }
     }
