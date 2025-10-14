@@ -45,11 +45,11 @@ struct WindowInfo {
     char_height: u32,    
 }
 
-/// Represents the text editor state
 struct TextEditor {
     lines: Vec<String>,
     scr_col: usize,
     scr_row: usize,
+    buffer_col: usize,
     buffer_row: usize,
     prev_cursor_x: usize,
     prev_cursor_y: usize,
@@ -69,6 +69,7 @@ impl TextEditor {
             scr_row: 0,
             prev_cursor_x: 0,
             prev_cursor_y: 0,
+            buffer_col: 0,
             buffer_row: 0,
             filename: String::from("filename.txt"),
             is_modified: false,
@@ -151,7 +152,7 @@ impl TextEditor {
         }
     }
     
-    fn move_cursor_right(&mut self) {
+    fn move_cursor_right(&mut self, window_info: &WindowInfo) {
         if self.mode == EditorMode::OpenFile {
             if self.scr_col < self.input_buffer.len() + OPEN_FILE_MARGIN {
                 self.scr_col += 1;
@@ -159,10 +160,17 @@ impl TextEditor {
             return;
         } 
 
-        if self.scr_col < self.lines[self.buffer_row].len() {
-            self.scr_col += 1;
+        println!("{}", self.lines[self.buffer_row].len());
+        if self.buffer_col < self.lines[self.buffer_row].len() {
+            self.buffer_col += 1;
+
+            if self.scr_col < window_info.cols as usize - 1 {
+                println!("{} {} {}", window_info.cols, self.buffer_col, self.scr_col);
+                self.scr_col += 1;
+            }
         } else if self.buffer_row < self.lines.len() - 1 {
             self.buffer_row += 1;
+            self.buffer_col = 0;
             self.scr_col = 0;
         }
     }
@@ -354,7 +362,7 @@ fn main() -> Result<(), String> {
                             }
                         },
                         Keycode::Left => editor.move_cursor_left(),
-                        Keycode::Right => editor.move_cursor_right(),
+                        Keycode::Right => editor.move_cursor_right(&window_info),
                         Keycode::Up => {
                             if editor.mode == EditorMode::Edit {
                                 editor.move_cursor_up()
@@ -470,7 +478,7 @@ fn main() -> Result<(), String> {
                 let status = format!("Open file: {}", &editor.input_buffer[..editor.scr_col - OPEN_FILE_MARGIN]);
                 font.size_of(&status).unwrap_or((0, 0)).0
             } else {
-                let text_before_cursor = &editor.lines[editor.buffer_row][..editor.scr_col];
+                let text_before_cursor = &editor.lines[editor.buffer_row][..editor.buffer_col];
                 font.size_of(text_before_cursor).unwrap_or((0, 0)).0
             };
                         
