@@ -51,6 +51,7 @@ struct TextEditor {
     scr_row: usize,
     buffer_col: usize,
     buffer_row: usize,
+    buffer_col_offset: usize,  // Horizontal scroll offset
     prev_cursor_x: usize,
     prev_cursor_y: usize,
     filename: String,
@@ -58,7 +59,7 @@ struct TextEditor {
     cursor_visible: bool,
     last_cursor_blink: std::time::Instant,
     mode: EditorMode,
-    input_buffer: String,  // Buffer for command/filename input    
+    input_buffer: String,  // Buffer for command/filename input
 }
 
 impl TextEditor {
@@ -71,6 +72,7 @@ impl TextEditor {
             prev_cursor_y: 0,
             buffer_col: 0,
             buffer_row: 0,
+            buffer_col_offset: 0,
             filename: String::from("filename.txt"),
             is_modified: false,
             cursor_visible: true,
@@ -80,29 +82,47 @@ impl TextEditor {
         }
     }
 
-    fn insert_char(&mut self, c: char) {
+    fn insert_char(&mut self, c: char, window_info: &WindowInfo) {
         if self.mode == EditorMode::OpenFile {
             let pos = self.scr_col - OPEN_FILE_MARGIN;
             self.input_buffer.insert(pos, c);
             self.scr_col += 1;
         } else {
             let line = &mut self.lines[self.buffer_row];
-            line.insert(self.scr_col, c);
-            self.scr_col += 1;
+            line.insert(self.buffer_col, c);
+            self.buffer_col += 1;
+
+            // Adjust horizontal scrolling
+            self.scr_col = self.buffer_col - self.buffer_col_offset;
+            if self.scr_col >= window_info.cols as usize {
+                self.buffer_col_offset += 1;
+                self.scr_col = window_info.cols as usize - 1;
+            }
+
             self.is_modified = true;
         }
     }
 
-    fn backspace(&mut self) {
-        if self.scr_col > 0 {
+    fn backspace(&mut self, window_info: &WindowInfo) {
+        if self.buffer_col > 0 {
             let line = &mut self.lines[self.buffer_row];
-            line.remove(self.scr_col - 1);
-            self.scr_col -= 1;
+            line.remove(self.buffer_col - 1);
+            self.buffer_col -= 1;
+
+            // Adjust horizontal scrolling
+            if self.buffer_col < self.buffer_col_offset {
+                self.buffer_col_offset = self.buffer_col;
+            }
+            self.scr_col = self.buffer_col - self.buffer_col_offset;
+
             self.is_modified = true;
         } else if self.buffer_row > 0 {
             let current_line = self.lines.remove(self.buffer_row);
             self.buffer_row -= 1;
-            self.scr_col = self.lines[self.buffer_row].len();
+            self.buffer_col = self.lines[self.buffer_row].len();
+            self.buffer_col_offset = 0;
+            self.scr_col = self.buffer_col.min(window_info.cols as usize - 1);
+
             self.lines[self.buffer_row].push_str(&current_line);
             self.is_modified = true;
         }
@@ -124,31 +144,48 @@ impl TextEditor {
         let current_line = &mut self.lines[self.buffer_row];
 
         // Split line at cursor
-        let rest_of_line = current_line[self.scr_col..].to_string();
+        let rest_of_line = current_line[self.buffer_col..].to_string();
 
-        self.lines[self.buffer_row].truncate(self.scr_col);
+        self.lines[self.buffer_row].truncate(self.buffer_col);
 
         self.buffer_row += 1;
         self.scr_row = cmp::min(self.scr_row + 1, EDITOR_ROWS as usize - 1);
         self.lines.insert(self.buffer_row, rest_of_line);
+        self.buffer_col = 0;
+        self.buffer_col_offset = 0;
         self.scr_col = 0;
         self.is_modified = true;
     }
 
-    fn move_cursor_left(&mut self) {
+    fn move_cursor_left(&mut self, window_info: &WindowInfo) {
         if self.mode == EditorMode::OpenFile {
             if self.scr_col - OPEN_FILE_MARGIN > 0 {
                 self.scr_col -= 1;
             }
-            
+
             return;
         }
 
-        if self.scr_col > 0 {
-            self.scr_col -= 1;
-        } else if self.scr_row > 0 {
+        if self.buffer_col > 0 {
+            self.buffer_col -= 1;
+
+            // Adjust horizontal scrolling
+            if self.buffer_col < self.buffer_col_offset {
+                self.buffer_col_offset = self.buffer_col;
+            }
+            self.scr_col = self.buffer_col - self.buffer_col_offset;
+        } else if self.buffer_row > 0 {
             self.buffer_row -= 1;
-            self.scr_col = self.lines[self.buffer_row].len();            
+            self.buffer_col = self.lines[self.buffer_row].len();
+
+            // Reset horizontal scroll or adjust if line is long
+            if self.buffer_col < window_info.cols as usize {
+                self.buffer_col_offset = 0;
+                self.scr_col = self.buffer_col;
+            } else {
+                self.buffer_col_offset = self.buffer_col - (window_info.cols as usize - 1);
+                self.scr_col = window_info.cols as usize - 1;
+            }
         }
     }
     
@@ -158,30 +195,40 @@ impl TextEditor {
                 self.scr_col += 1;
             }
             return;
-        } 
+        }
 
-        println!("{}", self.lines[self.buffer_row].len());
         if self.buffer_col < self.lines[self.buffer_row].len() {
             self.buffer_col += 1;
 
-            if self.scr_col < window_info.cols as usize - 1 {
-                println!("{} {} {}", window_info.cols, self.buffer_col, self.scr_col);
-                self.scr_col += 1;
+            // Adjust horizontal scrolling
+            self.scr_col = self.buffer_col - self.buffer_col_offset;
+            if self.scr_col >= window_info.cols as usize {
+                self.buffer_col_offset += 1;
+                self.scr_col = window_info.cols as usize - 1;
             }
         } else if self.buffer_row < self.lines.len() - 1 {
             self.buffer_row += 1;
             self.buffer_col = 0;
+            self.buffer_col_offset = 0;
             self.scr_col = 0;
         }
     }
 
-    fn move_cursor_up(&mut self) {
+    fn move_cursor_up(&mut self, window_info: &WindowInfo) {
         if self.buffer_row > 0 {
             self.buffer_row -= 1;
 
-            if self.scr_col > self.lines[self.buffer_row].len() {
-                self.scr_col = self.lines[self.buffer_row].len();
+            if self.buffer_col > self.lines[self.buffer_row].len() {
+                self.buffer_col = self.lines[self.buffer_row].len();
             }
+
+            // Adjust horizontal scrolling
+            if self.buffer_col < self.buffer_col_offset {
+                self.buffer_col_offset = self.buffer_col;
+            } else if self.buffer_col >= self.buffer_col_offset + window_info.cols as usize {
+                self.buffer_col_offset = self.buffer_col - (window_info.cols as usize - 1);
+            }
+            self.scr_col = self.buffer_col - self.buffer_col_offset;
         }
 
         if self.scr_row > 0 && !(self.scr_row == 5 && self.buffer_row > 5) {
@@ -193,13 +240,21 @@ impl TextEditor {
         if self.buffer_row == self.lines.len() - 1 {
             return
         }
-        
+
         if self.buffer_row < self.lines.len() - 1 {
             self.buffer_row += 1;
 
-            if self.scr_col > self.lines[self.buffer_row].len() {
-                self.scr_col = self.lines[self.buffer_row].len();
+            if self.buffer_col > self.lines[self.buffer_row].len() {
+                self.buffer_col = self.lines[self.buffer_row].len();
             }
+
+            // Adjust horizontal scrolling
+            if self.buffer_col < self.buffer_col_offset {
+                self.buffer_col_offset = self.buffer_col;
+            } else if self.buffer_col >= self.buffer_col_offset + window_info.cols as usize {
+                self.buffer_col_offset = self.buffer_col - (window_info.cols as usize - 1);
+            }
+            self.scr_col = self.buffer_col - self.buffer_col_offset;
         }
 
         let bm = EDITOR_ROWS as usize - 5;
@@ -217,7 +272,7 @@ impl TextEditor {
     fn load(&mut self, filename: &str) -> Result<(), String> {
         let file = File::open(filename).map_err(|e| e.to_string())?;
         let reader = BufReader::new(file);
-        
+
         self.lines.clear();
         for line in reader.lines() {
             self.lines.push(line.map_err(|e| e.to_string())?);
@@ -226,7 +281,9 @@ impl TextEditor {
         self.filename = filename.to_string();
         self.scr_col = 0;
         self.scr_row = 0;
+        self.buffer_col = 0;
         self.buffer_row = 0;
+        self.buffer_col_offset = 0;
         self.is_modified = false;
 
         Ok(())
@@ -334,7 +391,7 @@ fn main() -> Result<(), String> {
                 Event::Quit { .. } => break 'running,
                 Event::TextInput { text, .. } => {
                     for c in text.chars() {
-                        editor.insert_char(c);
+                        editor.insert_char(c, &window_info);
                     }
                     splash_title= false;
                 }
@@ -356,16 +413,16 @@ fn main() -> Result<(), String> {
                         },
                         Keycode::Backspace => {
                             if editor.mode == EditorMode::Edit {
-                                editor.backspace();
+                                editor.backspace(&window_info);
                             } else {
                                 editor.backspace_buffer(OPEN_FILE_MARGIN);
                             }
                         },
-                        Keycode::Left => editor.move_cursor_left(),
+                        Keycode::Left => editor.move_cursor_left(&window_info),
                         Keycode::Right => editor.move_cursor_right(&window_info),
                         Keycode::Up => {
                             if editor.mode == EditorMode::Edit {
-                                editor.move_cursor_up()
+                                editor.move_cursor_up(&window_info)
                             }
                         },
                         Keycode::Down => {
@@ -397,6 +454,8 @@ fn main() -> Result<(), String> {
                         },
                         Keycode::Home => {
                             if editor.mode == EditorMode::Edit {
+                                editor.buffer_col = 0;
+                                editor.buffer_col_offset = 0;
                                 editor.scr_col = 0;
                             }
                             else {
@@ -405,7 +464,14 @@ fn main() -> Result<(), String> {
                         },
                         Keycode::End => {
                             if editor.mode == EditorMode::Edit {
-                                editor.scr_col = editor.lines[editor.buffer_row].len();
+                                editor.buffer_col = editor.lines[editor.buffer_row].len();
+                                if editor.buffer_col < window_info.cols as usize {
+                                    editor.buffer_col_offset = 0;
+                                    editor.scr_col = editor.buffer_col;
+                                } else {
+                                    editor.buffer_col_offset = editor.buffer_col - (window_info.cols as usize - 1);
+                                    editor.scr_col = window_info.cols as usize - 1;
+                                }
                             }
                             else {
                                 editor.scr_col = editor.input_buffer.len() + OPEN_FILE_MARGIN;
@@ -448,16 +514,24 @@ fn main() -> Result<(), String> {
         
         let buffer_start = (editor.buffer_row as i32 - editor.scr_row as i32).max(0) as usize;
         let buffer_end = (buffer_start + window_info.rows as usize).min(editor.lines.len());
-        
+
         let mut scr_row = 0;
-        for buffer_row in buffer_start..buffer_end {                                
-            let line = &editor.lines[buffer_row];                
+        for buffer_row in buffer_start..buffer_end {
+            let line = &editor.lines[buffer_row];
+
+            // Apply horizontal scrolling offset to all lines
+            let display_text = if editor.buffer_col_offset < line.len() {
+                &line[editor.buffer_col_offset..]
+            } else {
+                ""
+            };
+
             render_text(
                 &mut canvas,
                 &font,
-                line,
-                MARGIN_LEFT, 
-                MARGIN_TOP + (scr_row as i32 * window_info.char_height as i32), 
+                display_text,
+                MARGIN_LEFT,
+                MARGIN_TOP + (scr_row as i32 * window_info.char_height as i32),
                 Color::RGB(0, 0, 0))?;
             scr_row += 1;
         }
